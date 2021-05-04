@@ -1,0 +1,183 @@
+version: "3.7"
+
+services:
+
+  php_fpm:
+    build:
+      context: ./docker
+      dockerfile: ./php/Dockerfile
+      args:
+        - XDEBUG_REMOTE_HOST=${XDEBUG_REMOTE_HOST}
+        - XDEBUG_REMOTE_PORT=${XDEBUG_REMOTE_PORT}
+        - TIMEZONE=${TIMEZONE}
+    restart: always
+    container_name: symfony_start_2_php_fpm
+    environment:
+      PHP_IDE_CONFIG: "serverName=docker"
+    volumes:
+      - type: bind
+        source: ./
+        target: /var/www/symfony_start
+    networks:
+      backend:
+        ipv4_address: 11.14.10.5
+    labels:
+      - "traefik.enable=false"
+
+  nginx:
+    image: nginx
+    restart: always
+    container_name: symfony_start_2_nginx
+    depends_on:
+      - php_fpm
+    volumes:
+      - type: bind
+        source: ./docker/nginx/default.nginx
+        target: /etc/nginx/conf.d/default.conf
+      - type: bind
+        source: ./
+        target: /var/www/symfony_start
+    networks:
+      backend:
+        ipv4_address: 11.14.10.2
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nginx.rule=Host(`symfony_start2.local`)"
+      - "traefik.http.routers.nginx.entrypoints=web"
+
+  postgres:
+    image: postgres:13-alpine
+    restart: always
+    container_name: symfony_start_2_postgres
+    volumes:
+      - type: volume
+        source: dbdata
+        target: /var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: main
+      POSTGRES_PASSWORD: main
+      POSTGRES_DB: main
+    networks:
+      backend:
+        ipv4_address: 11.14.10.6
+    ports:
+      - "5432:5432"
+    labels:
+      - "traefik.enable=false"
+
+  redis:
+    image: redis:6-alpine
+    restart: always
+    container_name: symfony_start_2_redis
+    ports:
+      - "6379:6379"
+    networks:
+      backend:
+        ipv4_address: 11.14.10.9
+    labels:
+      - "traefik.enable=false"
+
+  redis-commander:
+    container_name: symfony_redis_commander
+    image: rediscommander/redis-commander:latest
+    restart: always
+    environment:
+      - REDIS_HOSTS=local:11.14.10.9:6379
+    networks:
+      backend:
+        ipv4_address: 11.14.10.10
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.rediscommander.rule=Host(`rediscommander.local`)"
+      - "traefik.http.services.rediscommander.loadbalancer.server.port=8081"
+      - "traefik.http.routers.rediscommander.entrypoints=web"
+
+  # Login:pgadmin@example.com Password:main
+  pgadmin:
+    container_name: symfony_start_2_pgadmin
+    image: dpage/pgadmin4
+    depends_on:
+      - postgres
+    environment:
+      PGADMIN_DEFAULT_EMAIL: pgadmin@example.com
+      PGADMIN_DEFAULT_PASSWORD: main
+    volumes:
+      - type: volume
+        source: pgadmin
+        target: /var/lib/pgadmin
+    restart: always
+    networks:
+      backend:
+        ipv4_address: 11.14.10.7
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pgadmin.rule=Host(`pgadmin.local`)"
+      - "traefik.http.routers.pgadmin.entrypoints=web"
+
+  adminer:
+    image: adminer
+    container_name: symfony_start_2_adminer
+    restart: always
+    environment:
+      - ADMINER_DESIGN=nette
+      - ADMINER_DEFAULT_SERVER=postgres
+    networks:
+      backend:
+        ipv4_address: 11.14.10.8
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.adminer.rule=Host(`adminer.local`)"
+      - "traefik.http.services.adminer.loadbalancer.server.port=8080"
+      - "traefik.http.routers.adminer.entrypoints=web"
+
+  # Login:admin Password:password
+  portainer:
+    image: portainer/portainer
+    container_name: symfony_start_2_portainer
+    restart: always
+    command: --admin-password '$$2y$$05$$arC5e4UbRPxfR68jaFnAAe1aL7C1U03pqfyQh49/9lB9lqFxLfBqS' -H unix:///var/run/docker.sock
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+    networks:
+      backend:
+        ipv4_address: 11.14.10.3
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.rule=Host(`portainer.local`)"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+      - "traefik.http.routers.portainer.entrypoints=web"
+
+  traefik:
+    image: traefik:v2.4
+    restart: always
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    container_name: symfony_start_2_traefik
+    ports:
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      backend:
+        ipv4_address: 11.14.10.4
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.local`)"
+      - "traefik.http.services.traefik.loadbalancer.server.port=8080"
+      - "traefik.http.routers.traefik.entrypoints=web"
+
+volumes:
+  dbdata:
+  pgadmin:
+
+networks:
+  backend:
+    ipam:
+      driver: default
+      config:
+        - subnet: "11.14.10.0/24"
