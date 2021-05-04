@@ -1,5 +1,5 @@
 server {
-    server_name symfony_start.local www.symfony_start.local;
+    server_name symfony_start2.local www.symfony_start2.local;
     root /var/www/symfony_start/public;
 
     location / {
@@ -7,7 +7,7 @@ server {
     }
 
     location ~ ^/index\.php(/|$) {
-        fastcgi_pass 11.13.10.5:9000;
+        fastcgi_pass 11.14.10.5:9000;
         fastcgi_split_path_info ^(.+\.php)(/.*)$;
         include fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
